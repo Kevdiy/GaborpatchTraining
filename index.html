@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>蓋博符號視力回復遊戲</title>
+    <title>「蓋博符號」視力回復遊戲</title>
     <style>
         :root {
             --bg-current: #B3B3B3;
@@ -15,7 +15,6 @@
             font-family: -apple-system, system-ui, sans-serif;
             background-color: var(--bg-current);
             margin: 0;
-            /* Use svh (Small Viewport Height) to prevent iPhone shift */
             height: 100vh;
             height: 100svh; 
             width: 100vw;
@@ -36,7 +35,6 @@
             backdrop-filter: blur(8px);
             z-index: 20;
             flex-shrink: 0;
-            /* Account for iPhone Notch */
             padding-top: env(safe-area-inset-top);
         }
 
@@ -58,10 +56,9 @@
             flex: 1;
             width: 100%;
             display: flex;
-            flex-direction: column; /* Changed to column to help vertical centering */
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            /* Ensures space for bottom home bar on iPhone */
             padding-bottom: env(safe-area-inset-bottom);
         }
 
@@ -72,7 +69,6 @@
             padding: 5px;
             border-radius: 8px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-            /* Important: Removes any default margins that might cause offset */
             margin: 0 auto; 
         }
 
@@ -163,6 +159,8 @@
         let selectedTile = null;
         let matchesFound = 0;
         let totalPairs = 0;
+        // Keep track of symbols currently on board for orientation changes
+        let currentBoardSymbols = []; 
 
         function getRandomPastel() {
             const h = Math.floor(Math.random() * 360);
@@ -180,16 +178,14 @@
             };
         }
 
-        function initLevel(isFirstLoad = false) {
-            if (!isOvertime || isFirstLoad) {
+        function initLevel(isFirstLoad = false, isResize = false) {
+            if (!isOvertime && !isResize || isFirstLoad) {
                 document.body.style.backgroundColor = getRandomPastel();
             }
 
             const container = document.getElementById('game-container');
-            container.innerHTML = '';
             const config = getLevelConfig();
             
-            // Refined height calculation for iPhone centering
             const winW = window.innerWidth;
             const headerHeight = document.getElementById('header').offsetHeight;
             const overtimeHeight = isOvertime ? document.getElementById('overtime-msg').offsetHeight : 0;
@@ -202,31 +198,36 @@
             container.style.gridTemplateColumns = `repeat(${config.cols}, ${finalPx}px)`;
             
             totalPairs = Math.floor((config.rows * config.cols) / 2);
-            matchesFound = 0;
 
-            let levelPatterns = [];
-            for (let i = 0; i < totalPairs; i++) {
-                let p = (Math.random() < config.probFirst5) ? Math.floor(Math.random() * 5) : 5 + Math.floor(Math.random() * 6);
-                levelPatterns.push(p, p);
+            // If it's a fresh level, generate symbols. If resize, use existing ones.
+            if (!isResize) {
+                matchesFound = 0;
+                currentBoardSymbols = [];
+                for (let i = 0; i < totalPairs; i++) {
+                    let p = (Math.random() < config.probFirst5) ? Math.floor(Math.random() * 5) : 5 + Math.floor(Math.random() * 6);
+                    currentBoardSymbols.push({id: p, status: 'visible'}, {id: p, status: 'visible'});
+                }
+                while(currentBoardSymbols.length < (config.rows * config.cols)) currentBoardSymbols.push({id: null, status: 'hidden'});
+                currentBoardSymbols.sort(() => Math.random() - 0.5);
             }
-            while(levelPatterns.length < (config.rows * config.cols)) levelPatterns.push(null);
-            levelPatterns.sort(() => Math.random() - 0.5);
 
-            levelPatterns.forEach((idx) => {
+            container.innerHTML = '';
+            currentBoardSymbols.forEach((item, idx) => {
                 const tile = document.createElement('div');
                 tile.className = 'tile';
                 tile.style.width = `${finalPx}px`;
                 tile.style.height = `${finalPx}px`;
 
-                if (idx === null) {
+                if (item.id === null || item.status === 'hidden') {
                     tile.classList.add('hidden');
                 } else {
                     const sprite = document.createElement('div');
                     sprite.className = 'gabor-sprite';
                     sprite.style.backgroundImage = `url(${GABOR_IMAGE_DATA})`;
-                    sprite.style.backgroundPosition = `0% ${(idx / 10) * 100}%`;
+                    sprite.style.backgroundPosition = `0% ${(item.id / 10) * 100}%`;
                     tile.appendChild(sprite);
-                    tile.dataset.id = idx;
+                    tile.dataset.id = item.id;
+                    tile.dataset.index = idx; // Track specific position
                     tile.onclick = () => onTileClick(tile);
                 }
                 container.appendChild(tile);
@@ -249,7 +250,6 @@
                 isOvertime = true;
                 document.getElementById('timer').style.color = 'red';
                 document.getElementById('overtime-msg').style.display = 'block';
-                // Current board is KEPT. No initLevel() called here.
             }
         }
 
@@ -266,6 +266,10 @@
                     const t2 = selectedTile;
                     selectedTile = null; 
                     setTimeout(() => {
+                        // Mark symbols as hidden in our state array
+                        currentBoardSymbols[t1.dataset.index].status = 'hidden';
+                        currentBoardSymbols[t2.dataset.index].status = 'hidden';
+                        
                         t1.classList.add('hidden');
                         t2.classList.add('hidden');
                         matchesFound++;
@@ -307,7 +311,14 @@
             document.getElementById('report-overlay').style.display = 'flex';
         }
 
-        window.addEventListener('resize', () => { if (timerId) initLevel(); });
+        // --- DEBOUNCED ORIENTATION HANDLER ---
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (timerId) initLevel(false, true); // True flag means "Resize, don't reset board"
+            }, 250);
+        });
     </script>
 </body>
 </html>
